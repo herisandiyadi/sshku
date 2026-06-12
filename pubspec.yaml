@@ -1,0 +1,43 @@
+name: sshku
+description: "SSHKU - Flutter SSH Client"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  flutter_bloc: 9.1.1
+  get_it: 8.0.3
+  injectable: 2.5.0
+  dartz: 0.10.1
+  equatable: 2.0.7
+  freezed_annotation: 2.4.4
+  json_annotation: 4.9.0
+  file_picker: ^8.0.0
+  local_auth: ^2.3.0
+  shared_preferences: ^2.3.0
+  package_info_plus: ^8.0.0
+  url_launcher: ^6.2.0
+  crypto: ^3.0.3
+  path_provider: ^2.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  mockito: ^5.4.4
+  bloc_test: ^10.0.0
+  build_runner: 2.4.14
+  injectable_generator: 2.7.0
+  freezed: 2.5.8
+  json_serializable: 6.9.4
+  sqflite_common_ffi: ^2.3.7+1
+
+flutter:
+  uses-material-design: true
