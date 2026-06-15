@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'core/database/database_helper.dart';
 import 'core/di/injection.dart';
 import 'core/theme/app_theme.dart';
 import 'features/app_lock/presentation/cubit/app_lock_cubit.dart';
@@ -12,9 +13,10 @@ import 'features/ssh_keys/presentation/pages/ssh_keys_page.dart';
 import 'features/settings/presentation/pages/settings_page.dart';
 import 'features/settings/presentation/cubit/settings_cubit.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   configureDependencies();
+  await DatabaseHelper.instance.database; // Pre-warm DB
   runApp(const SshkuApp());
 }
 

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/database/database_helper.dart';
-import '../../../../core/platform/ssh_platform_channel.dart';
+import '../../../../core/platform/dart_ssh_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_spacing.dart';
 import '../../../ssh_connection/data/models/connection_model.dart';
@@ -59,20 +59,16 @@ class _CommandResultSheetState extends State<_CommandResultSheet> {
     if (_selected == null) return;
     setState(() { _loading = true; _result = null; _error = null; });
 
-    final ssh = SshPlatformChannel();
+    final ssh = DartSshService();
     try {
-      final sessionId = await ssh.connect(
+      await ssh.connect(
         host: _selected!.host,
         port: _selected!.port,
         username: _selected!.username,
         password: _passwordCtrl.text.isNotEmpty ? _passwordCtrl.text : null,
       );
-      try {
-        final output = await ssh.execute(sessionId, widget.command);
-        setState(() => _result = output);
-      } finally {
-        await ssh.disconnect(sessionId);
-      }
+      final session = await ssh.execute(widget.command);
+      setState(() => _result = session);
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {

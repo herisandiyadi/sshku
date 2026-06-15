@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -46,14 +48,21 @@ class TerminalPainter extends CustomPainter {
     canvas.drawRect(Offset.zero & size, Paint()..color = AppColors.background);
 
     final bgPaint = Paint();
+    final visibleRows = (size.height / cellHeight).ceil().clamp(0, buffer.rows);
 
-    for (int row = 0; row < buffer.rows; row++) {
+    for (int row = 0; row < visibleRows; row++) {
       final line = buffer.getVisibleLine(row);
+      if (line.isEmpty) continue;
       final y = row * cellHeight;
 
-      // Batch build line text with spans for each styled run
-      int runStart = 0;
+      // Draw backgrounds and build paragraph for this line
+      final pb = ui.ParagraphBuilder(ui.ParagraphStyle(
+        fontFamily: 'monospace',
+        fontSize: fontSize,
+        maxLines: 1,
+      ));
 
+      int runStart = 0;
       for (int col = 0; col < line.length; col++) {
         final cell = line[col];
 
@@ -63,36 +72,31 @@ class TerminalPainter extends CustomPainter {
           canvas.drawRect(Rect.fromLTWH(col * cellWidth, y, cellWidth, cellHeight), bgPaint);
         }
 
-        // Check if we can batch with next char
         final nextSameStyle = col + 1 < line.length &&
             line[col + 1].fgColor == cell.fgColor &&
             line[col + 1].bold == cell.bold;
 
         if (!nextSameStyle) {
-          // Paint this run
-          final runText = StringBuffer();
+          // Push style and text for this run
+          pb.pushStyle(ui.TextStyle(
+            color: cell.fgColor,
+            fontSize: fontSize,
+            fontFamily: 'monospace',
+            fontWeight: cell.bold ? FontWeight.bold : FontWeight.normal,
+          ));
+          final runBuf = StringBuffer();
           for (int c = runStart; c <= col; c++) {
-            runText.write(line[c].character);
+            runBuf.write(line[c].character);
           }
-          final text = runText.toString();
-          if (text.trim().isNotEmpty) {
-            final tp = TextPainter(
-              text: TextSpan(
-                text: text,
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: fontSize,
-                  color: cell.fgColor,
-                  fontWeight: cell.bold ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-              textDirection: TextDirection.ltr,
-            )..layout();
-            tp.paint(canvas, Offset(runStart * cellWidth, y));
-          }
+          pb.addText(runBuf.toString());
+          pb.pop();
           runStart = col + 1;
         }
       }
+
+      final paragraph = pb.build()
+        ..layout(ui.ParagraphConstraints(width: size.width));
+      canvas.drawParagraph(paragraph, Offset(0, y));
     }
 
     // Selection highlight
@@ -137,8 +141,7 @@ class TerminalPainter extends CustomPainter {
   @override
   bool shouldRepaint(TerminalPainter oldDelegate) =>
       oldDelegate.tick != tick ||
-      oldDelegate.fontSize != fontSize ||
-      oldDelegate.selection != selection;
+      oldDelegate.fontSize != fontSize;
 
   Size get preferredSize =>
       Size(buffer.cols * cellWidth, buffer.rows * cellHeight);

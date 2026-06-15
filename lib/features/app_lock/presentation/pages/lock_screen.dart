@@ -33,6 +33,7 @@ class _LockScreenState extends State<LockScreen> {
     try {
       final available = await _localAuth.canCheckBiometrics ||
           await _localAuth.isDeviceSupported();
+      if (!mounted) return;
       if (!available) {
         setState(() => _showPin = true);
         return;
@@ -41,12 +42,14 @@ class _LockScreenState extends State<LockScreen> {
         localizedReason: 'Authenticate to unlock SSHKU',
         options: const AuthenticationOptions(biometricOnly: false),
       );
-      if (authenticated && mounted) {
+      if (!mounted) return;
+      if (authenticated) {
         context.read<AppLockCubit>().unlock();
       } else {
         setState(() => _showPin = true);
       }
     } catch (_) {
+      if (!mounted) return;
       setState(() => _showPin = true);
     }
   }

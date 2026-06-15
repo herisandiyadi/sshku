@@ -5,6 +5,7 @@ class ConnectionModel {
   final int port;
   final String username;
   final String? authType;
+  final int? keyId;
   final String? createdAt;
   final int? groupId;
 
@@ -15,6 +16,7 @@ class ConnectionModel {
     this.port = 22,
     required this.username,
     this.authType,
+    this.keyId,
     this.createdAt,
     this.groupId,
   });
@@ -26,6 +28,7 @@ class ConnectionModel {
         'port': port,
         'username': username,
         'auth_type': authType,
+        'key_id': keyId,
         'created_at': createdAt ?? DateTime.now().toIso8601String(),
         'group_id': groupId,
       };
@@ -37,6 +40,7 @@ class ConnectionModel {
         port: map['port'] as int? ?? 22,
         username: map['username'] as String,
         authType: map['auth_type'] as String?,
+        keyId: map['key_id'] as int?,
         createdAt: map['created_at'] as String?,
         groupId: map['group_id'] as int?,
       );
@@ -48,6 +52,7 @@ class ConnectionModel {
         port: port,
         username: username,
         authType: authType,
+        keyId: keyId,
         createdAt: createdAt,
         groupId: clearGroup ? null : (groupId ?? this.groupId),
       );

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:sshku/core/database/database_helper.dart';
+import 'package:sshku/core/platform/keystore_platform_channel.dart';
 import 'package:sshku/core/theme/app_colors.dart';
 import 'package:sshku/core/theme/app_spacing.dart';
 import 'package:sshku/core/widgets/empty_state_widget.dart';
@@ -59,15 +61,71 @@ class _ServerListViewState extends State<_ServerListView> {
     }
   }
 
-  void _navigateToTerminal(BuildContext context, connection) {
+  void _navigateToTerminal(BuildContext context, connection) async {
+    String? password;
+    String? privateKey;
+
+    if (connection.authType == 'key' && connection.keyId != null) {
+      // Load the specific SSH key assigned to this connection
+      final keys = await DatabaseHelper.instance.getKeys();
+      final key = keys.where((k) => k.id == connection.keyId).firstOrNull;
+      if (key != null) {
+        try {
+          privateKey = await KeystorePlatformChannel().decrypt(key.encryptedPrivateKey);
+        } catch (_) {}
+      }
+    } else {
+      // Prompt for password
+      if (!context.mounted) return;
+      password = await _showPasswordDialog(context, connection);
+      if (password == null) return;
+    }
+
+    if (!context.mounted) return;
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => TerminalPage(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => TerminalPage(
           host: connection.host,
           port: connection.port,
           username: connection.username,
+          password: password,
+          privateKey: privateKey,
         ),
+        transitionDuration: Duration.zero,
+      ),
+    );
+  }
+
+  Future<String?> _showPasswordDialog(BuildContext context, dynamic connection) {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Connect to ${connection.name ?? connection.host}'),
+        content: TextField(
+          controller: controller,
+          obscureText: true,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Password'),
+          onSubmitted: (v) {
+            if (v.isNotEmpty) Navigator.pop(ctx, v);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              final text = controller.text;
+              if (text.isEmpty) return;
+              Navigator.pop(ctx, text);
+            },
+            child: const Text('Connect'),
+          ),
+        ],
       ),
     );
   }

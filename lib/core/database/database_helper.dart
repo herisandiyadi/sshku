@@ -21,7 +21,7 @@ class DatabaseHelper {
 
   Future<Database> _initDb() async {
     final path = join(await getDatabasesPath(), 'sshku.db');
-    return openDatabase(path, version: 6, onCreate: _onCreate, onUpgrade: _onUpgrade);
+    return openDatabase(path, version: 7, onCreate: _onCreate, onUpgrade: _onUpgrade);
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -34,6 +34,7 @@ class DatabaseHelper {
         port INTEGER DEFAULT 22,
         username TEXT NOT NULL,
         auth_type TEXT,
+        key_id INTEGER,
         created_at TEXT,
         group_id INTEGER REFERENCES server_groups(id)
       )
@@ -60,6 +61,9 @@ class DatabaseHelper {
     }
     if (oldVersion < 6) {
       await _createKnownHostsTable(db);
+    }
+    if (oldVersion < 7) {
+      await db.execute('ALTER TABLE connections ADD COLUMN key_id INTEGER');
     }
   }
 

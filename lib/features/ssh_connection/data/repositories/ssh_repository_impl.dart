@@ -19,14 +19,14 @@ class SshRepositoryImpl implements SshRepository {
     String? privateKey,
   }) async {
     try {
-      final id = await datasource.connect(
+      await datasource.connect(
         host: host,
         port: port,
         username: username,
         password: password,
         privateKey: privateKey,
       );
-      return Right(SshConnection(id: id, host: host, port: port, username: username));
+      return Right(SshConnection(id: 'dartssh', host: host, port: port, username: username));
     } catch (e) {
       return Left(ConnectionFailure(e.toString()));
     }
@@ -35,7 +35,7 @@ class SshRepositoryImpl implements SshRepository {
   @override
   Future<Either<Failure, void>> disconnect(String connectionId) async {
     try {
-      await datasource.disconnect(connectionId);
+      await datasource.disconnect();
       return const Right(null);
     } catch (e) {
       return Left(ServerFailure(e.toString()));
@@ -45,7 +45,7 @@ class SshRepositoryImpl implements SshRepository {
   @override
   Future<Either<Failure, String>> execute(String connectionId, String command) async {
     try {
-      final output = await datasource.execute(connectionId, command);
+      final output = await datasource.execute(command);
       return Right(output);
     } catch (e) {
       return Left(ServerFailure(e.toString()));

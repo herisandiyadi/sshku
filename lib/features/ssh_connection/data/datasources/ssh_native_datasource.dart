@@ -1,7 +1,7 @@
-import 'package:sshku/core/platform/ssh_platform_channel.dart';
+import 'package:sshku/core/platform/dart_ssh_service.dart';
 
 abstract class SshNativeDatasource {
-  Future<String> connect({
+  Future<void> connect({
     required String host,
     required int port,
     required String username,
@@ -9,25 +9,23 @@ abstract class SshNativeDatasource {
     String? privateKey,
   });
 
-  Future<void> disconnect(String connectionId);
+  Future<void> disconnect();
 
-  Future<String> execute(String connectionId, String command);
+  Future<String> execute(String command);
 }
 
 class SshNativeDatasourceImpl implements SshNativeDatasource {
-  final SshPlatformChannel _channel;
-
-  SshNativeDatasourceImpl(this._channel);
+  final DartSshService _ssh = DartSshService();
 
   @override
-  Future<String> connect({
+  Future<void> connect({
     required String host,
     required int port,
     required String username,
     String? password,
     String? privateKey,
   }) {
-    return _channel.connect(
+    return _ssh.connect(
       host: host,
       port: port,
       username: username,
@@ -37,12 +35,13 @@ class SshNativeDatasourceImpl implements SshNativeDatasource {
   }
 
   @override
-  Future<void> disconnect(String connectionId) async {
-    await _channel.disconnect(connectionId);
+  Future<void> disconnect() async {
+    await _ssh.close();
   }
 
   @override
-  Future<String> execute(String connectionId, String command) {
-    return _channel.execute(connectionId, command);
+  
+  Future<String> execute(String command) {
+    return _ssh.execute(command);
   }
 }

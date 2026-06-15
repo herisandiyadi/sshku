@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../../core/database/database_helper.dart';
-import '../../../../core/platform/ssh_platform_channel.dart';
+import '../../../../core/platform/dart_ssh_service.dart';
+import '../../../../core/platform/keystore_platform_channel.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../ssh_connection/data/models/known_host_model.dart';
 import '../../../ssh_connection/presentation/widgets/host_key_dialog.dart';
@@ -13,6 +14,7 @@ class TestConnectionButton extends StatefulWidget {
   final int port;
   final String username;
   final String? password;
+  final int? keyId;
 
   const TestConnectionButton({
     super.key,
@@ -20,6 +22,7 @@ class TestConnectionButton extends StatefulWidget {
     required this.port,
     required this.username,
     this.password,
+    this.keyId,
   });
 
   @override
@@ -34,11 +37,20 @@ class _TestConnectionButtonState extends State<TestConnectionButton> {
 
   Future<void> _testConnection() async {
     setState(() => _status = _Status.loading);
-    final channel = SshPlatformChannel();
+    final ssh = DartSshService();
     try {
+      // Resolve private key if keyId provided
+      String? privateKey;
+      if (widget.keyId != null) {
+        final keys = await DatabaseHelper.instance.getKeys();
+        final key = keys.where((k) => k.id == widget.keyId).firstOrNull;
+        if (key != null) {
+          privateKey = await KeystorePlatformChannel().decrypt(key.encryptedPrivateKey);
+        }
+      }
 
       // Host key verification
-      final hostKeyInfo = await channel.getHostFingerprint(
+      final hostKeyInfo = await ssh.getHostFingerprintMap(
         host: widget.host,
         port: widget.port,
       );
@@ -63,7 +75,6 @@ class _TestConnectionButtonState extends State<TestConnectionButton> {
           setState(() => _status = _Status.idle);
           return;
         }
-        // Save/update known host
         if (knownHost != null) {
           await DatabaseHelper.instance.updateKnownHost(KnownHostModel(
             id: knownHost.id,
@@ -83,22 +94,22 @@ class _TestConnectionButtonState extends State<TestConnectionButton> {
         }
       }
 
-      final sessionId = await channel.connect(
+      await ssh.connect(
         host: widget.host,
         port: widget.port,
         username: widget.username,
         password: widget.password,
-        acceptHostKey: true,
+        privateKey: privateKey,
       );
       setState(() => _status = _Status.success);
-      await channel.disconnect(sessionId);
+      await ssh.close();
     } catch (e) {
       setState(() {
         _status = _Status.failure;
         _errorMessage = e.toString();
       });
     } finally {
-      channel.dispose();
+      ssh.dispose();
     }
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) setState(() => _status = _Status.idle);
@@ -137,3 +148,5 @@ class _TestConnectionButtonState extends State<TestConnectionButton> {
     };
   }
 }
+// 108.136.43.35
+// ec2-user

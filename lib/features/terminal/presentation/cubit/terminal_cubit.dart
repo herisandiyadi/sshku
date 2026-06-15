@@ -3,21 +3,16 @@ import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/database/database_helper.dart';
-import '../../../../core/platform/shell_event_channel.dart';
-import '../../../../core/platform/ssh_platform_channel.dart';
+import '../../../../core/platform/dart_ssh_service.dart';
 import '../../../command_history/data/models/history_model.dart';
 import '../../../ssh_connection/data/models/known_host_model.dart';
 import '../../domain/terminal_buffer.dart';
 import 'terminal_state.dart';
 
 class TerminalCubit extends Cubit<TerminalState> {
-  final SshPlatformChannel _sshChannel;
-  final ShellEventChannel _shellEventChannel;
+  final DartSshService _ssh = DartSshService();
   final TerminalBuffer _buffer = TerminalBuffer();
 
-  SshPlatformChannel get sshChannel => _sshChannel;
-
-  String? _sessionId;
   String? _host;
   int? _port;
   String? _username;
@@ -27,15 +22,11 @@ class TerminalCubit extends Cubit<TerminalState> {
   Timer? _debounce;
   int _tick = 0;
   bool _manualClose = false;
+  final List<String> _pendingData = [];
 
   static const int _maxRetries = 3;
 
-  TerminalCubit({
-    SshPlatformChannel? sshChannel,
-    ShellEventChannel? shellEventChannel,
-  })  : _sshChannel = sshChannel ?? SshPlatformChannel(),
-        _shellEventChannel = shellEventChannel ?? ShellEventChannel(),
-        super(TerminalIdle());
+  TerminalCubit() : super(TerminalIdle());
 
   Future<void> connectAndOpenShell(
     String host,
@@ -51,34 +42,24 @@ class TerminalCubit extends Cubit<TerminalState> {
     _privateKey = privateKey;
     emit(TerminalConnecting());
     try {
-      // Host key verification
       final knownHost = await DatabaseHelper.instance.getKnownHost(host, port);
-      final hostKeyInfo = await _sshChannel.getHostFingerprint(host: host, port: port);
-      final fingerprint = hostKeyInfo['fingerprint']!;
-      final keyType = hostKeyInfo['keyType'];
-
-      if (knownHost == null) {
-        emit(TerminalHostKeyPrompt(
-          host: host,
-          port: port,
-          fingerprint: fingerprint,
-          keyType: keyType,
-          isChanged: false,
-        ));
-        return;
-      } else if (knownHost.fingerprint != fingerprint) {
-        emit(TerminalHostKeyPrompt(
-          host: host,
-          port: port,
-          fingerprint: fingerprint,
-          keyType: keyType,
-          isChanged: true,
-        ));
+      if (knownHost != null) {
+        await _doConnect();
         return;
       }
 
-      // Known and matches - connect silently
-      await _doConnect();
+      // First connection - get host fingerprint
+      final hostKeyInfo = await _ssh.getHostFingerprintMap(host: host, port: port);
+      final fingerprint = hostKeyInfo['fingerprint']!;
+      final keyType = hostKeyInfo['keyType'];
+
+      emit(TerminalHostKeyPrompt(
+        host: host,
+        port: port,
+        fingerprint: fingerprint,
+        keyType: keyType,
+        isChanged: false,
+      ));
     } catch (e) {
       emit(TerminalError(e.toString()));
     }
@@ -116,33 +97,36 @@ class TerminalCubit extends Cubit<TerminalState> {
   }
 
   Future<void> _doConnect() async {
-    _sessionId = await _sshChannel.connect(
+    await _ssh.connect(
       host: _host!,
       port: _port!,
       username: _username!,
       password: _password,
       privateKey: _privateKey,
-      acceptHostKey: true,
     );
-    await _sshChannel.openShell(_sessionId!);
+    await _ssh.openShell();
     _listenOutput();
     emit(TerminalActive(_buffer, _tick));
   }
 
   void _listenOutput() {
-    _outputSub = _shellEventChannel.outputStream.listen(
+    _outputSub = _ssh.outputStream.listen(
       (data) {
-        _buffer.write(data);
-        _debounce?.cancel();
-        _debounce = Timer(const Duration(milliseconds: 16), () {
-          if (!isClosed) {
-            emit(TerminalActive(_buffer, _tick++));
-          }
-        });
+        _pendingData.add(data);
+        _debounce ??= Timer(const Duration(milliseconds: 16), _flushOutput);
       },
       onError: (_) => _onDisconnect(),
       onDone: () => _onDisconnect(),
     );
+  }
+
+  void _flushOutput() {
+    _debounce = null;
+    if (isClosed || _pendingData.isEmpty) return;
+    final batch = _pendingData.join();
+    _pendingData.clear();
+    _buffer.write(batch);
+    emit(TerminalActive(_buffer, _tick++));
   }
 
   void _onDisconnect() {
@@ -154,21 +138,14 @@ class TerminalCubit extends Cubit<TerminalState> {
     for (int attempt = 1; attempt <= _maxRetries; attempt++) {
       if (isClosed) return;
       emit(TerminalReconnecting(attempt: attempt, maxAttempts: _maxRetries));
-      final delay = Duration(seconds: 1 << attempt);
-      await Future.delayed(delay);
+      await Future.delayed(Duration(seconds: 1 << attempt));
       if (isClosed) return;
       try {
         await _outputSub?.cancel();
-        if (_sessionId != null) {
-          try {
-            await _sshChannel.closeShell(_sessionId!);
-          } catch (_) {}
-        }
+        await _ssh.close();
         await _doConnect();
         return;
-      } catch (_) {
-        // continue to next attempt
-      }
+      } catch (_) {}
     }
     if (!isClosed) emit(TerminalDisconnected());
   }
@@ -180,21 +157,18 @@ class TerminalCubit extends Cubit<TerminalState> {
 
   Future<void> resize(int cols, int rows) async {
     _buffer.resize(rows, cols);
-    if (_sessionId != null) {
-      await _sshChannel.resizeShell(_sessionId!, cols, rows);
-    }
+    _ssh.resize(cols, rows);
     if (state is TerminalActive) {
       _tick++;
       emit(TerminalActive(_buffer, _tick));
     }
   }
 
-  Future<void> sendInput(String input) async {
-    if (_sessionId == null) return;
-    await _sshChannel.sendInput(_sessionId!, input);
+  void sendInput(String input) {
+    _ssh.sendInput(input);
     if (input.trim().isNotEmpty) {
       DatabaseHelper.instance.insertHistory(HistoryModel(
-        sessionId: _sessionId,
+        sessionId: _host,
         command: input.trim(),
         serverHost: _host,
         executedAt: DateTime.now().toIso8601String(),
@@ -207,10 +181,7 @@ class TerminalCubit extends Cubit<TerminalState> {
     _manualClose = true;
     _debounce?.cancel();
     await _outputSub?.cancel();
-    if (_sessionId != null) {
-      await _sshChannel.closeShell(_sessionId!);
-    }
-    _sshChannel.dispose();
+    _ssh.dispose();
     return super.close();
   }
 }

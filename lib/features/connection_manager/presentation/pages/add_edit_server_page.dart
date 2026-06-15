@@ -4,6 +4,7 @@ import 'package:sshku/core/theme/app_colors.dart';
 import 'package:sshku/core/theme/app_spacing.dart';
 import 'package:sshku/features/server_groups/data/models/server_group_model.dart';
 import 'package:sshku/features/ssh_connection/data/models/connection_model.dart';
+import 'package:sshku/features/ssh_keys/data/models/ssh_key_model.dart';
 
 import '../widgets/test_connection_button.dart';
 
@@ -24,7 +25,9 @@ class _AddEditServerPageState extends State<AddEditServerPage> {
   late final TextEditingController _passwordCtrl;
   String _authType = 'password';
   int? _selectedGroupId;
+  int? _selectedKeyId;
   List<ServerGroupModel> _groups = [];
+  List<SshKeyModel> _keys = [];
 
   bool get _isEdit => widget.connection != null;
 
@@ -39,13 +42,22 @@ class _AddEditServerPageState extends State<AddEditServerPage> {
     _passwordCtrl = TextEditingController();
     _authType = c?.authType ?? 'password';
     _selectedGroupId = c?.groupId;
+    _selectedKeyId = c?.keyId;
     _loadGroups();
+    _loadKeys();
   }
 
   Future<void> _loadGroups() async {
     try {
       final groups = await DatabaseHelper.instance.getGroups();
       if (mounted) setState(() => _groups = groups);
+    } catch (_) {}
+  }
+
+  Future<void> _loadKeys() async {
+    try {
+      final keys = await DatabaseHelper.instance.getKeys();
+      if (mounted) setState(() => _keys = keys);
     } catch (_) {}
   }
 
@@ -68,6 +80,7 @@ class _AddEditServerPageState extends State<AddEditServerPage> {
       port: int.tryParse(_portCtrl.text) ?? 22,
       username: _userCtrl.text.trim(),
       authType: _authType,
+      keyId: _authType == 'key' ? _selectedKeyId : null,
       createdAt: widget.connection?.createdAt,
       groupId: _selectedGroupId,
     );
@@ -176,12 +189,34 @@ class _AddEditServerPageState extends State<AddEditServerPage> {
                 obscureText: true,
               ),
             ],
+            if (_authType == 'key') ...[
+              const SizedBox(height: AppSpacing.md),
+              if (_keys.isEmpty)
+                const Text(
+                  'No SSH keys imported. Go to Keys tab to add one.',
+                  style: TextStyle(color: AppColors.error),
+                )
+              else
+                DropdownButtonFormField<int?>(
+                  value: _selectedKeyId,
+                  dropdownColor: AppColors.surface,
+                  decoration: _decoration('SSH Key'),
+                  style: const TextStyle(color: AppColors.onSurface),
+                  items: _keys.map((k) => DropdownMenuItem(
+                    value: k.id,
+                    child: Text('${k.name} (${k.type})'),
+                  )).toList(),
+                  onChanged: (v) => setState(() => _selectedKeyId = v),
+                  validator: (v) => v == null ? 'Select an SSH key' : null,
+                ),
+            ],
             const SizedBox(height: AppSpacing.lg),
             TestConnectionButton(
               host: _hostCtrl.text,
               port: int.tryParse(_portCtrl.text) ?? 22,
               username: _userCtrl.text,
               password: _authType == 'password' ? _passwordCtrl.text : null,
+              keyId: _authType == 'key' ? _selectedKeyId : null,
             ),
           ],
         ),

@@ -19,3 +19,6 @@
 
 # Kotlin coroutines
 -dontwarn kotlinx.coroutines.**
+
+# Play Core (Flutter deferred components)
+-dontwarn com.google.android.play.core.**
