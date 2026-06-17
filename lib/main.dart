@@ -10,6 +10,7 @@ import 'features/connection_manager/presentation/pages/server_list_page.dart';
 import 'features/quick_commands/presentation/pages/quick_commands_page.dart';
 import 'features/command_history/presentation/pages/history_page.dart';
 import 'features/ssh_keys/presentation/pages/ssh_keys_page.dart';
+import 'features/splash/presentation/pages/splash_screen.dart';
 import 'features/settings/presentation/cubit/settings_cubit.dart';
 
 void main() async {
@@ -35,7 +36,7 @@ class SshkuApp extends StatelessWidget {
             theme: AppTheme.lightTheme(),
             darkTheme: AppTheme.darkTheme(),
             themeMode: settings.themeMode,
-            home: const _AppGate(),
+            home: const SplashScreen(nextScreen: _AppGate()),
           );
         },
       ),
