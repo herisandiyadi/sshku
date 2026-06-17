@@ -39,7 +39,7 @@ class _LockScreenState extends State<LockScreen> {
         return;
       }
       final authenticated = await _localAuth.authenticate(
-        localizedReason: 'Authenticate to unlock SSHKU',
+        localizedReason: 'Authenticate to unlock SSH Coffee',
         options: const AuthenticationOptions(biometricOnly: false),
       );
       if (!mounted) return;

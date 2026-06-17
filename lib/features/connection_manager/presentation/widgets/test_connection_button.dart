@@ -150,3 +150,11 @@ class _TestConnectionButtonState extends State<TestConnectionButton> {
 }
 // 108.136.43.35
 // ec2-user
+
+
+// D/DecorView[]( 4383): onWindowFocusChanged hasWindowFocus true
+// 2
+// I/flutter ( 4383): [SSH_ISOLATE] Isolate started and ready
+// I/flutter ( 4383): [SSH_ISOLATE] Connecting to 108.136.43.35:22...
+// I/flutter ( 4383): [SSH_ISOLATE] Socket connected, starting auth...
+// I/flutter ( 4383): [SSH_ISOLATE] Authenticated OK

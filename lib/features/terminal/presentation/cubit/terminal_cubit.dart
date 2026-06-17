@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/database/database_helper.dart';
@@ -19,10 +20,13 @@ class TerminalCubit extends Cubit<TerminalState> {
   String? _password;
   String? _privateKey;
   StreamSubscription<String>? _outputSub;
-  Timer? _debounce;
   int _tick = 0;
   bool _manualClose = false;
-  final List<String> _pendingData = [];
+  String _currentLine = '';
+
+  // Batching: accumulate data, process in scheduled frame
+  final StringBuffer _pendingData = StringBuffer();
+  bool _frameScheduled = false;
 
   static const int _maxRetries = 3;
 
@@ -48,7 +52,6 @@ class TerminalCubit extends Cubit<TerminalState> {
         return;
       }
 
-      // First connection - get host fingerprint
       final hostKeyInfo = await _ssh.getHostFingerprintMap(host: host, port: port);
       final fingerprint = hostKeyInfo['fingerprint']!;
       final keyType = hostKeyInfo['keyType'];
@@ -97,6 +100,7 @@ class TerminalCubit extends Cubit<TerminalState> {
   }
 
   Future<void> _doConnect() async {
+    debugPrint('[TERMINAL] _doConnect start');
     await _ssh.connect(
       host: _host!,
       port: _port!,
@@ -104,28 +108,47 @@ class TerminalCubit extends Cubit<TerminalState> {
       password: _password,
       privateKey: _privateKey,
     );
+    debugPrint('[TERMINAL] connect done, opening shell...');
     await _ssh.openShell();
+    debugPrint('[TERMINAL] shell opened, listening output...');
     _listenOutput();
     emit(TerminalActive(_buffer, _tick));
+    debugPrint('[TERMINAL] TerminalActive emitted');
   }
 
   void _listenOutput() {
     _outputSub = _ssh.outputStream.listen(
       (data) {
-        _pendingData.add(data);
-        _debounce ??= Timer(const Duration(milliseconds: 16), _flushOutput);
+        debugPrint('[TERMINAL] received ${data.length} chars from isolate');
+        _pendingData.write(data);
+        _scheduleFrame();
       },
-      onError: (_) => _onDisconnect(),
-      onDone: () => _onDisconnect(),
+      onError: (e) {
+        debugPrint('[TERMINAL] stream error: $e');
+        _onDisconnect();
+      },
+      onDone: () {
+        debugPrint('[TERMINAL] stream done');
+        _onDisconnect();
+      },
     );
   }
 
-  void _flushOutput() {
-    _debounce = null;
+  void _scheduleFrame() {
+    if (_frameScheduled) return;
+    _frameScheduled = true;
+    Timer.run(_flushPending);
+  }
+
+  void _flushPending() {
+    _frameScheduled = false;
     if (isClosed || _pendingData.isEmpty) return;
-    final batch = _pendingData.join();
+    final data = _pendingData.toString();
     _pendingData.clear();
-    _buffer.write(batch);
+    final sw = Stopwatch()..start();
+    _buffer.write(data);
+    final ms = sw.elapsedMilliseconds;
+    if (ms > 5) debugPrint('[TERMINAL] buffer.write took ${ms}ms for ${data.length} chars');
     emit(TerminalActive(_buffer, _tick++));
   }
 
@@ -155,31 +178,33 @@ class TerminalCubit extends Cubit<TerminalState> {
     _autoReconnect();
   }
 
-  Future<void> resize(int cols, int rows) async {
+  void resize(int cols, int rows) {
     _buffer.resize(rows, cols);
     _ssh.resize(cols, rows);
-    if (state is TerminalActive) {
-      _tick++;
-      emit(TerminalActive(_buffer, _tick));
-    }
   }
 
   void sendInput(String input) {
     _ssh.sendInput(input);
-    if (input.trim().isNotEmpty) {
-      DatabaseHelper.instance.insertHistory(HistoryModel(
-        sessionId: _host,
-        command: input.trim(),
-        serverHost: _host,
-        executedAt: DateTime.now().toIso8601String(),
-      ));
+    // Only log commands on Enter, not every keystroke
+    if (input == '\r' || input == '\n') {
+      if (_currentLine.trim().isNotEmpty) {
+        DatabaseHelper.instance.insertHistory(HistoryModel(
+          sessionId: _host,
+          command: _currentLine.trim(),
+          serverHost: _host,
+          executedAt: DateTime.now().toIso8601String(),
+        ));
+      }
+      _currentLine = '';
+    } else if (input.codeUnitAt(0) >= 32) {
+      _currentLine += input;
     }
   }
 
   @override
   Future<void> close() async {
     _manualClose = true;
-    _debounce?.cancel();
+    _frameScheduled = false;
     await _outputSub?.cancel();
     _ssh.dispose();
     return super.close();

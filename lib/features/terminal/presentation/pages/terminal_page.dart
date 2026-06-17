@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -70,11 +71,13 @@ class _TerminalViewState extends State<_TerminalView> {
   int _lastCols = 0;
   int _lastRows = 0;
   Timer? _resizeDebounce;
+  Timer? _clearTimer;
 
   @override
   void initState() {
     super.initState();
     _inputController.addListener(_onTextChanged);
+    _focusNode.onKeyEvent = _onKeyEvent;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         context.read<TerminalCubit>().connectAndOpenShell(
@@ -84,9 +87,20 @@ class _TerminalViewState extends State<_TerminalView> {
     });
   }
 
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.backspace) {
+        _sendInput('\x08');
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
   void dispose() {
     _resizeDebounce?.cancel();
+    _clearTimer?.cancel();
     _inputController.removeListener(_onTextChanged);
     _inputController.dispose();
     _focusNode.dispose();
@@ -102,7 +116,7 @@ class _TerminalViewState extends State<_TerminalView> {
     _lastCols = cols;
     _lastRows = rows;
     _resizeDebounce?.cancel();
-    _resizeDebounce = Timer(const Duration(milliseconds: 300), () {
+    _resizeDebounce = Timer(const Duration(milliseconds: 500), () {
       if (mounted) context.read<TerminalCubit>().resize(cols, rows);
     });
   }
@@ -111,12 +125,16 @@ class _TerminalViewState extends State<_TerminalView> {
     final current = _inputController.text;
     if (current.length > _prevText.length) {
       final newChars = current.substring(_prevText.length);
-      _sendInput(newChars);
+      final toSend = newChars.replaceAll('\n', '\r');
+      _sendInput(toSend);
     }
     _prevText = current;
-    Future.microtask(() {
-      _inputController.value = const TextEditingValue();
-      _prevText = '';
+    _clearTimer?.cancel();
+    _clearTimer = Timer(const Duration(milliseconds: 100), () {
+      if (mounted && _inputController.text.isNotEmpty) {
+        _prevText = '';
+        _inputController.value = const TextEditingValue();
+      }
     });
   }
 
@@ -136,108 +154,148 @@ class _TerminalViewState extends State<_TerminalView> {
     _focusNode.requestFocus();
   }
 
+  Future<bool> _confirmExit() async {
+    _focusNode.unfocus();
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Disconnect?'),
+        content: const Text('Are you sure you want to close the terminal session?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Disconnect'),
+          ),
+        ],
+      ),
+    );
+    return confirm == true;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Terminal'),
-        backgroundColor: AppColors.surface,
-      ),
-      body: BlocBuilder<TerminalCubit, TerminalState>(
-        builder: (context, state) {
-          if (state is TerminalConnecting || state is TerminalIdle) {
-            return const Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await _confirmExit() && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          title: const Text('Terminal'),
+          backgroundColor: AppColors.surface,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () async {
+              if (await _confirmExit()) {
+                if (!context.mounted) return;
+                Navigator.pop(context);
+              }
+            },
+          ),
+        ),
+        body: BlocConsumer<TerminalCubit, TerminalState>(
+          listener: (context, state) {
+            if (state is TerminalHostKeyPrompt) {
+              _showHostKeyDialog(state);
+            }
+          },
+          builder: (context, state) {
+            return Column(
+              children: [
+                Expanded(child: _buildBody(state)),
+                TerminalKeyboardBar(
+                  key: _keyboardBarKey,
+                  onKeyPress: _onSpecialKey,
+                ),
+              ],
             );
-          }
-          if (state is TerminalHostKeyPrompt) {
-            _showHostKeyDialog(state);
-            return const Center(
-              child: Text('Verifying host key...',
-                  style: TextStyle(color: AppColors.onSurface)),
-            );
-          }
-          if (state is TerminalError) {
-            return ErrorStateWidget(
-              message: state.message,
-              onRetry: () => context.read<TerminalCubit>().manualReconnect(),
-            );
-          }
-          if (state is TerminalDisconnected) {
-            return Center(
-              child: ElevatedButton(
-                onPressed: () => context.read<TerminalCubit>().manualReconnect(),
-                child: const Text('Reconnect'),
-              ),
-            );
-          }
-          if (state is TerminalReconnecting) {
-            return Center(
-              child: Text('Reconnecting... (${state.attempt}/${state.maxAttempts})',
-                  style: const TextStyle(color: AppColors.onSurface)),
-            );
-          }
-          // TerminalActive
-          return _buildTerminal(state as TerminalActive);
-        },
+          },
+        ),
       ),
     );
   }
 
-  Widget _buildTerminal(TerminalActive state) {
-    return Column(
-      children: [
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              _handleResize(constraints.maxWidth, constraints.maxHeight);
-              return Stack(
-                children: [
-                  CustomPaint(
-                    painter: TerminalPainter(
-                      buffer: state.buffer,
-                      tick: state.tick,
-                    ),
-                    size: Size.infinite,
-                  ),
-                  // Transparent input field overlaid on terminal
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    height: 48,
-                    child: TextField(
-                      controller: _inputController,
-                      focusNode: _focusNode,
-                      keyboardType: TextInputType.text,
-                      enableSuggestions: false,
-                      autocorrect: false,
-                      showCursor: false,
-                      style: const TextStyle(color: Colors.transparent, fontSize: 1),
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                    ),
-                  ),
-                  // Tap target
-                  Positioned.fill(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.translucent,
-                      onTap: () => _focusNode.requestFocus(),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
+  Widget _buildBody(TerminalState state) {
+    if (state is TerminalConnecting || state is TerminalIdle) {
+      return const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      );
+    }
+    if (state is TerminalHostKeyPrompt) {
+      return const Center(
+        child: Text('Verifying host key...',
+            style: TextStyle(color: AppColors.onSurface)),
+      );
+    }
+    if (state is TerminalError) {
+      return ErrorStateWidget(
+        message: state.message,
+        onRetry: () => context.read<TerminalCubit>().manualReconnect(),
+      );
+    }
+    if (state is TerminalDisconnected) {
+      return Center(
+        child: ElevatedButton(
+          onPressed: () => context.read<TerminalCubit>().manualReconnect(),
+          child: const Text('Reconnect'),
         ),
-        TerminalKeyboardBar(
-          key: _keyboardBarKey,
-          onKeyPress: _onSpecialKey,
+      );
+    }
+    if (state is TerminalReconnecting) {
+      return Center(
+        child: Text(
+          'Reconnecting... (${state.attempt}/${state.maxAttempts})',
+          style: const TextStyle(color: AppColors.onSurface),
         ),
-      ],
+      );
+    }
+    // TerminalActive
+    final active = state as TerminalActive;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _handleResize(constraints.maxWidth, constraints.maxHeight);
+        return Stack(
+          children: [
+            CustomPaint(
+              painter: TerminalPainter(
+                buffer: active.buffer,
+                tick: active.tick,
+              ),
+              size: Size(constraints.maxWidth, constraints.maxHeight),
+            ),
+            Positioned.fill(
+              child: TextField(
+                controller: _inputController,
+                focusNode: _focusNode,
+                keyboardType: TextInputType.multiline,
+                enableSuggestions: false,
+                autocorrect: false,
+                showCursor: false,
+                maxLines: null,
+                expands: true,
+                style: const TextStyle(
+                  color: Colors.transparent,
+                  fontSize: 1,
+                  height: 1,
+                ),
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                  isCollapsed: true,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

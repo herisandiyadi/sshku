@@ -10,7 +10,6 @@ import 'features/connection_manager/presentation/pages/server_list_page.dart';
 import 'features/quick_commands/presentation/pages/quick_commands_page.dart';
 import 'features/command_history/presentation/pages/history_page.dart';
 import 'features/ssh_keys/presentation/pages/ssh_keys_page.dart';
-import 'features/settings/presentation/pages/settings_page.dart';
 import 'features/settings/presentation/cubit/settings_cubit.dart';
 
 void main() async {
@@ -32,7 +31,7 @@ class SshkuApp extends StatelessWidget {
       child: BlocBuilder<SettingsCubit, SettingsState>(
         builder: (context, settings) {
           return MaterialApp(
-            title: 'SSHKU',
+            title: 'SSH Coffee',
             theme: AppTheme.lightTheme(),
             darkTheme: AppTheme.darkTheme(),
             themeMode: settings.themeMode,
@@ -71,22 +70,6 @@ class _MainShellState extends State<_MainShell> {
   Widget build(BuildContext context) {
     _builtTabs.add(_index); // Mark current tab as built
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('SSHKU'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SettingsPage()),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.lock_outline),
-            onPressed: () => _showLockSettings(context),
-          ),
-        ],
-      ),
       body: IndexedStack(
         index: _index,
         children: [
@@ -107,13 +90,6 @@ class _MainShellState extends State<_MainShell> {
           BottomNavigationBarItem(icon: Icon(Icons.vpn_key), label: 'Keys'),
         ],
       ),
-    );
-  }
-
-  void _showLockSettings(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => const _LockSettingsDialog(),
     );
   }
 }

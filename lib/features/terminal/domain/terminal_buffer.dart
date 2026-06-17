@@ -1,7 +1,8 @@
 import 'dart:ui';
 
-import 'package:sshku/features/terminal/domain/ansi_parser.dart';
 import 'package:sshku/features/terminal/domain/terminal_colors.dart';
+
+enum _ParserState { normal, escape, csi }
 
 class TerminalCell {
   String character;
@@ -35,7 +36,10 @@ class TerminalBuffer {
   int scrollOffset = 0;
 
   final List<List<TerminalCell>> history = [];
-  final AnsiParser _parser = AnsiParser();
+
+  // Inline parser state (avoids intermediate List<AnsiAction> allocation)
+  _ParserState _parserState = _ParserState.normal;
+  final StringBuffer _paramBuf = StringBuffer();
 
   // Current SGR attributes
   Color _fgColor = TerminalColors.defaultFg;
@@ -51,53 +55,49 @@ class TerminalBuffer {
 
   /// Main entry point — write raw terminal data including escape sequences.
   void write(String data) {
-    final actions = _parser.parse(data);
-    for (final action in actions) {
-      switch (action.type) {
-        case AnsiActionType.print:
-          _putChar(action.char!);
+    final len = data.length;
+    var i = 0;
+    while (i < len) {
+      final c = data.codeUnitAt(i);
+      switch (_parserState) {
+        case _ParserState.normal:
+          if (c == 0x1B) {
+            _parserState = _ParserState.escape;
+          } else if (c == 0x0A) {
+            _newline();
+          } else if (c == 0x0D) {
+            cursorCol = 0;
+          } else if (c == 0x08) {
+            if (cursorCol > 0) cursorCol--;
+          } else if (c == 0x09) {
+            cursorCol = ((cursorCol ~/ 8) + 1) * 8;
+            if (cursorCol >= cols) cursorCol = cols - 1;
+          } else if (c >= 0x20) {
+            _putChar(data[i]);
+          }
           break;
-        case AnsiActionType.newline:
-          _newline();
+        case _ParserState.escape:
+          if (c == 0x5B) {
+            // '['
+            _parserState = _ParserState.csi;
+            _paramBuf.clear();
+          } else {
+            _parserState = _ParserState.normal;
+          }
           break;
-        case AnsiActionType.carriageReturn:
-          cursorCol = 0;
-          break;
-        case AnsiActionType.backspace:
-          if (cursorCol > 0) cursorCol--;
-          break;
-        case AnsiActionType.tab:
-          cursorCol = ((cursorCol ~/ 8) + 1) * 8;
-          if (cursorCol >= cols) cursorCol = cols - 1;
-          break;
-        case AnsiActionType.cursorUp:
-          cursorRow = (cursorRow - _param1(action)).clamp(0, rows - 1);
-          break;
-        case AnsiActionType.cursorDown:
-          cursorRow = (cursorRow + _param1(action)).clamp(0, rows - 1);
-          break;
-        case AnsiActionType.cursorForward:
-          cursorCol = (cursorCol + _param1(action)).clamp(0, cols - 1);
-          break;
-        case AnsiActionType.cursorBack:
-          cursorCol = (cursorCol - _param1(action)).clamp(0, cols - 1);
-          break;
-        case AnsiActionType.cursorPosition:
-          final r = action.params.isNotEmpty ? action.params[0] : 1;
-          final c = action.params.length > 1 ? action.params[1] : 1;
-          cursorRow = (r - 1).clamp(0, rows - 1);
-          cursorCol = (c - 1).clamp(0, cols - 1);
-          break;
-        case AnsiActionType.eraseDisplay:
-          _eraseDisplay(action.params.isNotEmpty ? action.params[0] : 0);
-          break;
-        case AnsiActionType.eraseLine:
-          _eraseLine(action.params.isNotEmpty ? action.params[0] : 0);
-          break;
-        case AnsiActionType.sgr:
-          _applySgr(action.params);
+        case _ParserState.csi:
+          if (c >= 0x30 && c <= 0x3F) {
+            _paramBuf.writeCharCode(c);
+          } else if (c >= 0x20 && c <= 0x2F) {
+            // intermediate bytes — skip
+          } else {
+            // final byte
+            _parserState = _ParserState.normal;
+            _dispatchCsi(c);
+          }
           break;
       }
+      i++;
     }
   }
 
@@ -136,10 +136,39 @@ class TerminalBuffer {
 
   // --- Private helpers ---
 
-  int _param1(AnsiAction action) =>
-      (action.params.isNotEmpty && action.params[0] > 0)
-          ? action.params[0]
-          : 1;
+  List<int> _parseCsiParams() {
+    final s = _paramBuf.toString();
+    if (s.isEmpty) return const [];
+    return s.split(';').map((p) => int.tryParse(p) ?? 0).toList();
+  }
+
+  void _dispatchCsi(int finalByte) {
+    final params = _parseCsiParams();
+    final p1 = (params.isNotEmpty && params[0] > 0) ? params[0] : 1;
+
+    switch (finalByte) {
+      case 0x41: // 'A' cursor up
+        cursorRow = (cursorRow - p1).clamp(0, rows - 1);
+      case 0x42: // 'B' cursor down
+        cursorRow = (cursorRow + p1).clamp(0, rows - 1);
+      case 0x43: // 'C' cursor forward
+        cursorCol = (cursorCol + p1).clamp(0, cols - 1);
+      case 0x44: // 'D' cursor back
+        cursorCol = (cursorCol - p1).clamp(0, cols - 1);
+      case 0x48: // 'H' cursor position
+      case 0x66: // 'f' cursor position
+        final r = params.isNotEmpty ? params[0] : 1;
+        final c = params.length > 1 ? params[1] : 1;
+        cursorRow = (r - 1).clamp(0, rows - 1);
+        cursorCol = (c - 1).clamp(0, cols - 1);
+      case 0x4A: // 'J' erase display
+        _eraseDisplay(params.isNotEmpty ? params[0] : 0);
+      case 0x4B: // 'K' erase line
+        _eraseLine(params.isNotEmpty ? params[0] : 0);
+      case 0x6D: // 'm' SGR
+        _applySgr(params);
+    }
+  }
 
   void _putChar(String ch) {
     if (cursorCol >= cols) {

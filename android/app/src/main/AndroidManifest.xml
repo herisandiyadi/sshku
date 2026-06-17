@@ -1,9 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <application
-        android:label="sshku"
+        android:label="SSH Coffee"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- Disable Flutter 3.29+ thread merge to prevent ANR on platform channel ops -->
+        <meta-data
+            android:name="io.flutter.embedding.android.DisableMergedPlatformUIThread"
+            android:value="true" />
         <activity
             android:name="com.example.sshku.MainActivity"
             android:exported="true"
@@ -31,6 +35,10 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Disable Impeller to avoid ANR on some devices (Xiaomi/MIUI) -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

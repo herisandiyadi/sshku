@@ -14,6 +14,7 @@ import 'package:sshku/features/server_groups/data/models/server_group_model.dart
 import 'package:sshku/features/server_groups/presentation/cubit/server_groups_cubit.dart';
 import 'package:sshku/features/server_groups/presentation/cubit/server_groups_state.dart';
 import 'package:sshku/features/server_groups/presentation/widgets/manage_groups_sheet.dart';
+import 'package:sshku/features/settings/presentation/pages/settings_page.dart';
 import 'package:sshku/features/terminal/presentation/pages/terminal_page.dart';
 
 class ServerListPage extends StatelessWidget {
@@ -134,8 +135,15 @@ class _ServerListViewState extends State<_ServerListView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SSHKU'),
+        title: const Text('Servers'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsPage()),
+            ),
+          ),
           PopupMenuButton(
             icon: const Icon(Icons.more_vert),
             itemBuilder: (_) => [
@@ -185,6 +193,7 @@ class _ServerListViewState extends State<_ServerListView> {
                       return ServerCard(
                         connection: conn,
                         onTap: () => _navigateToTerminal(context, conn),
+                        onEdit: () => _navigateToEdit(context, conn),
                         onLongPress: () => _navigateToEdit(context, conn),
                         onDelete: () {
                           if (conn.id != null) {
