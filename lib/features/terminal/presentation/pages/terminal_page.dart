@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/error_state_widget.dart';
+import '../../../ai_command/presentation/widgets/ai_input_panel.dart';
 import '../../../ssh_connection/presentation/widgets/host_key_dialog.dart';
 import '../cubit/terminal_cubit.dart';
 import '../cubit/terminal_state.dart';
@@ -164,6 +165,17 @@ class _TerminalViewState extends State<_TerminalView> {
     });
   }
 
+  void _openAiPanel(BuildContext context) {
+    // Ambil cubit dari context terminal sebelum membuka sheet (sheet punya
+    // context sendiri). Command yang disetujui "diketik" ke shell + Enter.
+    final terminalCubit = context.read<TerminalCubit>();
+    _focusNode.unfocus();
+    AiInputPanel.show(
+      context,
+      onRun: (command) => terminalCubit.sendInput('$command\r'),
+    );
+  }
+
   Future<bool> _confirmExit() async {
     _focusNode.unfocus();
     final confirm = await showDialog<bool>(
@@ -211,6 +223,11 @@ class _TerminalViewState extends State<_TerminalView> {
             },
           ),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.auto_awesome),
+              tooltip: 'AI Command',
+              onPressed: () => _openAiPanel(context),
+            ),
             IconButton(
               icon: const Icon(Icons.keyboard),
               onPressed: _showKeyboard,

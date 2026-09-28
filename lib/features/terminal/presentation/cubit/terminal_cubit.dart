@@ -11,7 +11,7 @@ import '../../domain/terminal_buffer.dart';
 import 'terminal_state.dart';
 
 class TerminalCubit extends Cubit<TerminalState> {
-  final DartSshService _ssh = DartSshService();
+  final SshService _ssh;
   final TerminalBuffer _buffer = TerminalBuffer();
 
   String? _host;
@@ -30,7 +30,9 @@ class TerminalCubit extends Cubit<TerminalState> {
 
   static const int _maxRetries = 3;
 
-  TerminalCubit() : super(TerminalIdle());
+  TerminalCubit({SshService? ssh})
+      : _ssh = ssh ?? DartSshService(),
+        super(TerminalIdle());
 
   Future<void> connectAndOpenShell(
     String host,

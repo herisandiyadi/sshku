@@ -5,9 +5,28 @@ import 'dart:isolate';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
 
+/// Seam SSH yang dipakai [TerminalCubit]. Interface ini memungkinkan menyuntik
+/// fake pada test tanpa memicu isolate nyata milik [DartSshService].
+abstract class SshService {
+  Stream<String> get outputStream;
+  Future<Map<String, String>> getHostFingerprintMap({required String host, required int port});
+  Future<void> connect({
+    required String host,
+    required int port,
+    required String username,
+    String? password,
+    String? privateKey,
+  });
+  Future<void> openShell({int cols, int rows});
+  void sendInput(String input);
+  void resize(int cols, int rows);
+  Future<void> close();
+  void dispose();
+}
+
 /// SSH service that runs all SSH operations in a background isolate
 /// to prevent ANR caused by dartssh2 key exchange blocking the main thread.
-class DartSshService {
+class DartSshService implements SshService {
   Isolate? _isolate;
   SendPort? _cmdPort;
   ReceivePort? _receivePort;
@@ -15,6 +34,7 @@ class DartSshService {
   final _completers = <int, Completer<dynamic>>{};
   int _nextId = 0;
 
+  @override
   Stream<String> get outputStream => _outputController.stream;
 
   DartSshService() {
@@ -22,6 +42,7 @@ class DartSshService {
     _ensureIsolate();
   }
 
+  @override
   Future<Map<String, String>> getHostFingerprintMap({
     required String host,
     required int port,
@@ -30,6 +51,7 @@ class DartSshService {
     return Map<String, String>.from(result as Map);
   }
 
+  @override
   Future<void> connect({
     required String host,
     required int port,
@@ -46,6 +68,7 @@ class DartSshService {
     });
   }
 
+  @override
   Future<void> openShell({int cols = 80, int rows = 24}) async {
     await _send('openShell', {'cols': cols, 'rows': rows});
   }
@@ -55,14 +78,17 @@ class DartSshService {
     return result as String;
   }
 
+  @override
   void sendInput(String input) {
     _cmdPort?.send({'cmd': 'input', 'data': input});
   }
 
+  @override
   void resize(int cols, int rows) {
     _cmdPort?.send({'cmd': 'resize', 'cols': cols, 'rows': rows});
   }
 
+  @override
   Future<void> close() async {
     try {
       _cmdPort?.send({'cmd': 'close'});
@@ -72,6 +98,7 @@ class DartSshService {
     _killIsolate();
   }
 
+  @override
   void dispose() {
     _cmdPort?.send({'cmd': 'close'});
     Future.delayed(const Duration(milliseconds: 100), _killIsolate);

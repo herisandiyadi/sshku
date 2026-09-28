@@ -8,6 +8,7 @@ import '../../../app_lock/presentation/cubit/app_lock_cubit.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../cubit/settings_cubit.dart';
 import '../widgets/export_import_actions.dart';
+import 'ai_config_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -94,6 +95,17 @@ class _SettingsPageState extends State<SettingsPage> {
               title: const Text('Change PIN'),
               onTap: _showPinSetup,
             ),
+          _sectionHeader('AI Command'),
+          ListTile(
+            leading: const Icon(Icons.auto_awesome),
+            title: const Text('AI Command'),
+            subtitle: const Text('Provider base URL, API key, dan model'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AiConfigPage()),
+            ),
+          ),
           _sectionHeader('Data'),
           ListTile(
             leading: const Icon(Icons.upload),
