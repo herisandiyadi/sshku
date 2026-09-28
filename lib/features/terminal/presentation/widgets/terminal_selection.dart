@@ -32,7 +32,7 @@ class TerminalSelection {
     }
     final lines = <String>[];
     for (int r = r1; r <= r2 && r < buffer.rows; r++) {
-      final row = buffer.screenBuffer[r];
+      final row = buffer.getVisibleLine(r);
       final start = (r == r1) ? c1 : 0;
       final end = (r == r2) ? c2 : row.length - 1;
       final sb = StringBuffer();

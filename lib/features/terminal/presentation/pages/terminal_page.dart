@@ -11,6 +11,7 @@ import '../cubit/terminal_cubit.dart';
 import '../cubit/terminal_state.dart';
 import '../widgets/terminal_keyboard_bar.dart';
 import '../widgets/terminal_painter.dart';
+import '../widgets/terminal_selection.dart';
 
 class TerminalPage extends StatelessWidget {
   final String host;
@@ -66,6 +67,8 @@ class _TerminalViewState extends State<_TerminalView> {
   final _inputController = TextEditingController();
   final _focusNode = FocusNode();
   final _keyboardBarKey = GlobalKey<TerminalKeyboardBarState>();
+  final _selection = TerminalSelection();
+  bool _isSelecting = false;
   String _prevText = '';
   bool _hostKeyDialogShown = false;
   int _lastCols = 0;
@@ -262,15 +265,10 @@ class _TerminalViewState extends State<_TerminalView> {
     return LayoutBuilder(
       builder: (context, constraints) {
         _handleResize(constraints.maxWidth, constraints.maxHeight);
+        final cellH = TerminalPainter.cellSize(14).height;
+        final cellW = TerminalPainter.cellSize(14).width;
         return Stack(
           children: [
-            CustomPaint(
-              painter: TerminalPainter(
-                buffer: active.buffer,
-                tick: active.tick,
-              ),
-              size: Size(constraints.maxWidth, constraints.maxHeight),
-            ),
             Positioned.fill(
               child: TextField(
                 controller: _inputController,
@@ -278,6 +276,7 @@ class _TerminalViewState extends State<_TerminalView> {
                 keyboardType: TextInputType.multiline,
                 enableSuggestions: false,
                 autocorrect: false,
+                enableInteractiveSelection: false,
                 showCursor: false,
                 maxLines: null,
                 expands: true,
@@ -290,6 +289,80 @@ class _TerminalViewState extends State<_TerminalView> {
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.zero,
                   isCollapsed: true,
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onVerticalDragUpdate: (details) {
+                  if (_isSelecting) return;
+                  final delta = -details.delta.dy;
+                  final lines = (delta / cellH).round();
+                  if (lines != 0) {
+                    final buf = active.buffer;
+                    final newOffset =
+                        (buf.scrollOffset + lines).clamp(0, buf.maxScrollBack);
+                    if (newOffset != buf.scrollOffset) {
+                      buf.scrollOffset = newOffset;
+                      context.read<TerminalCubit>().notifyRepaint();
+                    }
+                  }
+                },
+                onLongPressStart: (details) {
+                  _isSelecting = true;
+                  _selection.clear();
+                  final col = (details.localPosition.dx / cellW).floor();
+                  final row = (details.localPosition.dy / cellH).floor();
+                  _selection.start(row, col);
+                  context.read<TerminalCubit>().notifyRepaint();
+                },
+                onLongPressMoveUpdate: (details) {
+                  final col = (details.localPosition.dx / cellW).floor();
+                  final row = (details.localPosition.dy / cellH).floor();
+                  _selection.update(row, col);
+                  context.read<TerminalCubit>().notifyRepaint();
+                },
+                onLongPressEnd: (_) {
+                  if (_selection.isSelecting) {
+                    final text = _selection.getSelectedText(active.buffer);
+                    if (text.isNotEmpty) {
+                      Clipboard.setData(ClipboardData(text: text));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Copied to clipboard'),
+                          duration: Duration(seconds: 1),
+                        ),
+                      );
+                    }
+                  }
+                  _isSelecting = false;
+                },
+                onTap: () {
+                  if (_selection.isSelecting) {
+                    _selection.clear();
+                    _isSelecting = false;
+                    context.read<TerminalCubit>().notifyRepaint();
+                  }
+                  if (active.buffer.scrollOffset != 0) {
+                    active.buffer.scrollOffset = 0;
+                    context.read<TerminalCubit>().notifyRepaint();
+                  }
+                  _focusNode.requestFocus();
+                },
+                onDoubleTap: () async {
+                  final data = await Clipboard.getData(Clipboard.kTextPlain);
+                  if (data?.text != null && data!.text!.isNotEmpty) {
+                    _sendInput(data.text!.replaceAll('\n', '\r'));
+                  }
+                },
+                child: CustomPaint(
+                  painter: TerminalPainter(
+                    buffer: active.buffer,
+                    tick: active.tick,
+                    selection: _selection,
+                  ),
+                  size: Size(constraints.maxWidth, constraints.maxHeight),
                 ),
               ),
             ),

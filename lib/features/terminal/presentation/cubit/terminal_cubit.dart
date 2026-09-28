@@ -183,6 +183,11 @@ class TerminalCubit extends Cubit<TerminalState> {
     _ssh.resize(cols, rows);
   }
 
+  void notifyRepaint() {
+    if (isClosed) return;
+    emit(TerminalActive(_buffer, _tick++));
+  }
+
   void sendInput(String input) {
     _ssh.sendInput(input);
     // Only log commands on Enter, not every keystroke
