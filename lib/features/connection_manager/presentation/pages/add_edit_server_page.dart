@@ -198,7 +198,7 @@ class _AddEditServerPageState extends State<AddEditServerPage> {
                 )
               else
                 DropdownButtonFormField<int?>(
-                  value: _selectedKeyId,
+                  initialValue: _selectedKeyId,
                   dropdownColor: AppColors.surface,
                   decoration: _decoration('SSH Key'),
                   style: const TextStyle(color: AppColors.onSurface),

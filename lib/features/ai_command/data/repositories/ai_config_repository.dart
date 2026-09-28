@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/security/credential_manager.dart';
+import '../../../../core/platform/keystore_platform_channel.dart';
 
 /// Konfigurasi AI Command yang dibaca UI & datasource.
 class AiConfig {
@@ -8,6 +9,10 @@ class AiConfig {
   final String model;
 
   /// API key plaintext (hasil dekripsi). Kosong = tanpa auth (endpoint lokal).
+  ///
+  /// Batasan sadar: key ada dalam bentuk plaintext di memori selama sesi karena
+  /// harus dipakai untuk header `Authorization`. TIDAK pernah ditulis plaintext
+  /// ke disk (hanya ciphertext via Keystore) dan tidak boleh di-log.
   final String apiKey;
 
   const AiConfig({this.baseUrl = '', this.model = '', this.apiKey = ''});
@@ -27,6 +32,10 @@ class AiConfigRepository {
   final CredentialManager _credentials;
 
   AiConfigRepository(this._credentials);
+
+  /// Rakit dependensi default (Keystore) — hindari duplikasi wiring di UI.
+  factory AiConfigRepository.create() =>
+      AiConfigRepository(CredentialManager(KeystorePlatformChannel()));
 
   Future<AiConfig> load() async {
     final prefs = await SharedPreferences.getInstance();

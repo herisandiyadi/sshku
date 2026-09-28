@@ -21,9 +21,10 @@ class AiCommand extends Equatable {
     this.risk = AiRisk.safe,
   });
 
-  AiCommand copyWith({bool? blocked, AiRisk? risk}) => AiCommand(
-        cmd: cmd,
-        desc: desc,
+  AiCommand copyWith({String? cmd, String? desc, bool? blocked, AiRisk? risk}) =>
+      AiCommand(
+        cmd: cmd ?? this.cmd,
+        desc: desc ?? this.desc,
         blocked: blocked ?? this.blocked,
         risk: risk ?? this.risk,
       );

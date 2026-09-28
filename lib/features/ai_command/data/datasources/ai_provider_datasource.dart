@@ -59,6 +59,40 @@ class AiProviderDatasource {
     return _parser.parse(content);
   }
 
+  /// Uji konektivitas & autentikasi ringan: kirim request minimal dan pastikan
+  /// endpoint membalas HTTP 2xx. TIDAK mewajibkan respons ter-parse jadi command,
+  /// sehingga tidak false-negative saat koneksi sebenarnya sehat.
+  Future<void> testConnection({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+  }) async {
+    final uri = Uri.parse('${_trimSlash(baseUrl)}/chat/completions');
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      if (apiKey.trim().isNotEmpty) 'Authorization': 'Bearer ${apiKey.trim()}',
+    };
+    final body = jsonEncode({
+      'model': model,
+      'messages': [
+        {'role': 'user', 'content': 'ping'},
+      ],
+      'max_tokens': 1,
+    });
+
+    final http.Response res;
+    try {
+      res = await _client
+          .post(uri, headers: headers, body: body)
+          .timeout(const Duration(seconds: 20));
+    } catch (e) {
+      throw Exception('Gagal menghubungi AI provider: $e');
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('AI provider error ${res.statusCode}: ${_briefBody(res.body)}');
+    }
+  }
+
   String _trimSlash(String url) =>
       url.trim().endsWith('/') ? url.trim().substring(0, url.trim().length - 1) : url.trim();
 
@@ -77,4 +111,7 @@ class AiProviderDatasource {
 
   String _briefBody(String body) =>
       body.length > 200 ? '${body.substring(0, 200)}…' : body;
+
+  /// Tutup HTTP client. Panggil saat pemilik selesai.
+  void dispose() => _client.close();
 }

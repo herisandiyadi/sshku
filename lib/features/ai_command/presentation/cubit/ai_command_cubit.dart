@@ -21,10 +21,14 @@ class AiCommandCubit extends Cubit<AiCommandState> {
     PromptBuilder? promptBuilder,
     SafetyEngine? safety,
   })  : _configRepo = configRepo,
+        _ownsDatasource = datasource == null,
         _datasource = datasource ?? AiProviderDatasource(),
         _promptBuilder = promptBuilder ?? PromptBuilder(),
         _safety = safety ?? SafetyEngine(),
         super(const AiIdle());
+
+  /// True bila datasource dibuat internal (bukan diinjeksi) -> cubit yang menutup.
+  final bool _ownsDatasource;
 
   Future<void> generate(String instruction) async {
     final trimmed = instruction.trim();
@@ -54,6 +58,12 @@ class AiCommandCubit extends Cubit<AiCommandState> {
   }
 
   void reset() => emit(const AiIdle());
+
+  @override
+  Future<void> close() {
+    if (_ownsDatasource) _datasource.dispose();
+    return super.close();
+  }
 
   String _clean(Object e) =>
       e.toString().replaceFirst('Exception: ', '').replaceFirst('FormatException: ', '');

@@ -195,17 +195,31 @@ class TerminalCubit extends Cubit<TerminalState> {
     // Only log commands on Enter, not every keystroke
     if (input == '\r' || input == '\n') {
       if (_currentLine.trim().isNotEmpty) {
-        DatabaseHelper.instance.insertHistory(HistoryModel(
-          sessionId: _host,
-          command: _currentLine.trim(),
-          serverHost: _host,
-          executedAt: DateTime.now().toIso8601String(),
-        ));
+        _logCommand(_currentLine);
       }
       _currentLine = '';
     } else if (input.codeUnitAt(0) >= 32) {
       _currentLine += input;
     }
+  }
+
+  /// Jalankan satu command utuh (mis. dari AI Agent): kirim ke shell + Enter,
+  /// catat ke history sekali, tanpa mengganggu akumulasi keystroke manual.
+  void runCommand(String command) {
+    final trimmed = command.trim();
+    if (trimmed.isEmpty) return;
+    _ssh.sendInput('$trimmed\r');
+    _currentLine = ''; // buang keystroke parsial yang mungkin sedang diketik
+    _logCommand(trimmed);
+  }
+
+  void _logCommand(String command) {
+    DatabaseHelper.instance.insertHistory(HistoryModel(
+      sessionId: _host,
+      command: command.trim(),
+      serverHost: _host,
+      executedAt: DateTime.now().toIso8601String(),
+    ));
   }
 
   @override

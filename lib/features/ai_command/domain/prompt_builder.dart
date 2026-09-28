@@ -4,6 +4,7 @@ class PromptBuilder {
   /// System prompt: minta AI membalas JSON murni berisi daftar command.
   /// [osHint] opsional (mis. "Ubuntu 22.04, bash") untuk akurasi; default asumsi
   /// bash/Linux sesuai keputusan desain v1.
+  // TODO(v2): isi osHint dari deteksi OS sesi (mis. `uname -a`) untuk akurasi.
   String systemPrompt({String? osHint}) {
     final target = osHint == null || osHint.trim().isEmpty
         ? 'bash on Linux (assume POSIX if unknown)'

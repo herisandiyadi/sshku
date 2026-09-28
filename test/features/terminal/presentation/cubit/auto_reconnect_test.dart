@@ -2,59 +2,59 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:sshku/core/platform/shell_event_channel.dart';
-import 'package:sshku/core/platform/ssh_platform_channel.dart';
+import 'package:sshku/core/platform/dart_ssh_service.dart';
 import 'package:sshku/features/terminal/presentation/cubit/terminal_cubit.dart';
 import 'package:sshku/features/terminal/presentation/cubit/terminal_state.dart';
 
-// Manual mocks
-class MockSshPlatformChannel extends SshPlatformChannel {
+/// Fake SshService: mengontrol outputStream (untuk memicu disconnect) dan bisa
+/// dibuat gagal saat connect. Tidak menyentuh isolate/jaringan nyata.
+class FakeSshService implements SshService {
   int connectCount = 0;
   bool shouldFail = false;
+  StreamController<String> _controller = StreamController<String>.broadcast();
+
+  void emitDone() => _controller.close();
 
   @override
-  Future<String> connect({
-    required String host,
-    required int port,
-    required String username,
-    String? password,
-    String? privateKey,
-    bool acceptHostKey = false,
-  }) async {
-    connectCount++;
-    if (shouldFail) throw Exception('Connection failed');
-    return 'session-1';
-  }
+  Stream<String> get outputStream => _controller.stream;
 
   @override
-  Future<Map<String, String>> getHostFingerprint({
+  Future<Map<String, String>> getHostFingerprintMap({
     required String host,
     required int port,
   }) async =>
       {'fingerprint': 'abc123', 'keyType': 'ed25519'};
 
   @override
-  Future<void> openShell(String sessionId) async {}
+  Future<void> connect({
+    required String host,
+    required int port,
+    required String username,
+    String? password,
+    String? privateKey,
+  }) async {
+    connectCount++;
+    if (shouldFail) throw Exception('Connection failed');
+    // Reconnect sukses: siapkan stream baru agar bisa dipicu putus lagi.
+    if (_controller.isClosed) {
+      _controller = StreamController<String>.broadcast();
+    }
+  }
 
   @override
-  Future<void> closeShell(String sessionId) async {}
+  Future<void> openShell({int cols = 80, int rows = 24}) async {}
 
   @override
-  Future<void> sendInput(String sessionId, String input) async {}
+  void sendInput(String input) {}
 
   @override
-  Future<void> resizeShell(String sessionId, int cols, int rows) async {}
-}
-
-class MockShellEventChannel extends ShellEventChannel {
-  StreamController<String>? _controller;
-
-  void init() => _controller = StreamController<String>.broadcast();
+  void resize(int cols, int rows) {}
 
   @override
-  Stream<String> get outputStream => _controller!.stream;
+  Future<void> close() async {}
 
-  void emitDone() => _controller!.close();
+  @override
+  void dispose() {}
 }
 
 void main() {
@@ -62,72 +62,56 @@ void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  late MockSshPlatformChannel mockSsh;
-  late MockShellEventChannel mockShell;
+  late FakeSshService fakeSsh;
 
   setUp(() {
-    mockSsh = MockSshPlatformChannel();
-    mockShell = MockShellEventChannel();
-    mockShell.init();
+    fakeSsh = FakeSshService();
   });
 
-  test('on disconnect, cubit emits TerminalReconnecting states', () async {
-    final cubit = TerminalCubit(
-      sshChannel: mockSsh,
-      shellEventChannel: mockShell,
-    );
-
-    final states = <TerminalState>[];
-    final sub = cubit.stream.listen(states.add);
-
+  Future<void> reachActive(TerminalCubit cubit) async {
     await cubit.connectAndOpenShell('host', 22, 'user', password: 'pass');
-
-    // getKnownHost returns null -> HostKeyPrompt
+    // getKnownHost mengembalikan null -> HostKeyPrompt
     if (cubit.state is TerminalHostKeyPrompt) {
       await cubit.acceptHostKeyAndConnect(
           fingerprint: 'abc123', keyType: 'ed25519');
     }
-
     expect(cubit.state, isA<TerminalActive>());
-    mockSsh.connectCount = 0;
+  }
+
+  test('on disconnect, cubit emits TerminalReconnecting and reconnects', () async {
+    final cubit = TerminalCubit(ssh: fakeSsh);
+    final states = <TerminalState>[];
+    final sub = cubit.stream.listen(states.add);
+
+    await reachActive(cubit);
+    fakeSsh.connectCount = 0;
     states.clear();
 
-    // Trigger disconnect
-    mockShell.emitDone();
+    fakeSsh.emitDone(); // picu disconnect
     await Future.delayed(const Duration(seconds: 5));
 
-    expect(mockSsh.connectCount, greaterThan(0));
+    expect(fakeSsh.connectCount, greaterThan(0));
     expect(states, contains(isA<TerminalReconnecting>()));
 
     await sub.cancel();
     await cubit.close();
   });
 
-  test('after 3 failures, transitions to TerminalDisconnected', () async {
-    final cubit = TerminalCubit(
-      sshChannel: mockSsh,
-      shellEventChannel: mockShell,
-    );
-
+  test('after 3 failed retries, transitions to TerminalDisconnected', () async {
+    final cubit = TerminalCubit(ssh: fakeSsh);
     final states = <TerminalState>[];
     final sub = cubit.stream.listen(states.add);
 
-    await cubit.connectAndOpenShell('host', 22, 'user', password: 'pass');
-    if (cubit.state is TerminalHostKeyPrompt) {
-      await cubit.acceptHostKeyAndConnect(
-          fingerprint: 'abc123', keyType: 'ed25519');
-    }
-
-    expect(cubit.state, isA<TerminalActive>());
-    mockSsh.shouldFail = true;
-    mockSsh.connectCount = 0;
+    await reachActive(cubit);
+    fakeSsh.shouldFail = true;
+    fakeSsh.connectCount = 0;
     states.clear();
 
-    mockShell.emitDone();
-    // Wait for all 3 retry attempts (2s + 4s + 8s = 14s + margin)
+    fakeSsh.emitDone();
+    // Tunggu 3 percobaan: delay 2s + 4s + 8s = 14s + margin.
     await Future.delayed(const Duration(seconds: 16));
 
-    expect(mockSsh.connectCount, 3);
+    expect(fakeSsh.connectCount, 3);
     expect(cubit.state, isA<TerminalDisconnected>());
 
     await sub.cancel();

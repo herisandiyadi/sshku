@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/security/credential_manager.dart';
-import '../../../../core/platform/keystore_platform_channel.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../ai_command/data/datasources/ai_provider_datasource.dart';
 import '../../../ai_command/data/repositories/ai_config_repository.dart';
-import '../../../ai_command/domain/prompt_builder.dart';
 
 /// Halaman konfigurasi AI Command (BYOK): base URL, API key, model.
 class AiConfigPage extends StatefulWidget {
@@ -20,7 +17,8 @@ class _AiConfigPageState extends State<AiConfigPage> {
   final _apiKeyController = TextEditingController();
   final _modelController = TextEditingController();
 
-  final _repo = AiConfigRepository(CredentialManager(KeystorePlatformChannel()));
+  final _repo = AiConfigRepository.create();
+  final _datasource = AiProviderDatasource();
 
   bool _obscureKey = true;
   bool _loading = true;
@@ -48,6 +46,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
     _baseUrlController.dispose();
     _apiKeyController.dispose();
     _modelController.dispose();
+    _datasource.dispose();
     super.dispose();
   }
 
@@ -84,12 +83,10 @@ class _AiConfigPageState extends State<AiConfigPage> {
     }
     setState(() => _testing = true);
     try {
-      await AiProviderDatasource().generate(
+      await _datasource.testConnection(
         baseUrl: baseUrl,
         apiKey: _apiKeyController.text,
         model: model,
-        systemPrompt: PromptBuilder().systemPrompt(),
-        instruction: 'echo hello',
       );
       _snack('Koneksi berhasil');
     } catch (e) {

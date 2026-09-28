@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../../../core/security/credential_manager.dart';
-import '../../../../core/platform/keystore_platform_channel.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../data/models/ai_command.dart';
 import '../../data/repositories/ai_config_repository.dart';
@@ -36,9 +34,7 @@ class AiInputPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (_) => AiCommandCubit(
-        configRepo: AiConfigRepository(
-          CredentialManager(KeystorePlatformChannel()),
-        ),
+        configRepo: AiConfigRepository.create(),
       ),
       child: _AiInputView(onRun: onRun),
     );
@@ -169,10 +165,18 @@ class _AiInputViewState extends State<_AiInputView> {
               padding: const EdgeInsets.only(top: 8),
               child: ElevatedButton.icon(
                 onPressed: () {
+                  final count = runnable.length;
                   for (final c in runnable) {
                     widget.onRun(c.cmd);
                   }
+                  final messenger = ScaffoldMessenger.of(context);
                   Navigator.pop(context);
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text('Menjalankan $count command'),
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
                 },
                 icon: const Icon(Icons.playlist_play),
                 label: const Text('Run all'),

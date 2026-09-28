@@ -6,23 +6,27 @@ import 'package:sshku/features/ssh_connection/data/repositories/ssh_repository_i
 import 'package:sshku/features/ssh_connection/domain/entities/ssh_connection.dart';
 
 class MockSshNativeDatasource implements SshNativeDatasource {
-  String? connectResult;
   String? executeResult;
   Exception? error;
 
   @override
-  Future<String> connect({required String host, required int port, required String username, String? password, String? privateKey}) async {
+  Future<void> connect({
+    required String host,
+    required int port,
+    required String username,
+    String? password,
+    String? privateKey,
+  }) async {
     if (error != null) throw error!;
-    return connectResult!;
   }
 
   @override
-  Future<void> disconnect(String connectionId) async {
+  Future<void> disconnect() async {
     if (error != null) throw error!;
   }
 
   @override
-  Future<String> execute(String connectionId, String command) async {
+  Future<String> execute(String command) async {
     if (error != null) throw error!;
     return executeResult!;
   }
@@ -39,9 +43,8 @@ void main() {
 
   group('connect', () {
     test('success returns Right(SshConnection)', () async {
-      mockDatasource.connectResult = 'conn-1';
       final result = await repository.connect(host: '10.0.0.1', port: 22, username: 'root');
-      expect(result, Right(const SshConnection(id: 'conn-1', host: '10.0.0.1', port: 22, username: 'root')));
+      expect(result, Right(const SshConnection(id: 'dartssh', host: '10.0.0.1', port: 22, username: 'root')));
     });
 
     test('failure returns Left(ConnectionFailure)', () async {

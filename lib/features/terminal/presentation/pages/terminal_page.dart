@@ -6,7 +6,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/error_state_widget.dart';
+import '../../../ai_command/data/repositories/ai_config_repository.dart';
 import '../../../ai_command/presentation/widgets/ai_input_panel.dart';
+import '../../../settings/presentation/pages/ai_config_page.dart';
 import '../../../ssh_connection/presentation/widgets/host_key_dialog.dart';
 import '../cubit/terminal_cubit.dart';
 import '../cubit/terminal_state.dart';
@@ -167,12 +169,44 @@ class _TerminalViewState extends State<_TerminalView> {
 
   void _openAiPanel(BuildContext context) {
     // Ambil cubit dari context terminal sebelum membuka sheet (sheet punya
-    // context sendiri). Command yang disetujui "diketik" ke shell + Enter.
+    // context sendiri). Command yang disetujui dijalankan sebagai satu baris
+    // utuh (dikirim + Enter + dicatat ke history sekali).
     final terminalCubit = context.read<TerminalCubit>();
     _focusNode.unfocus();
+    _guardAndOpenAi(context, terminalCubit);
+  }
+
+  Future<void> _guardAndOpenAi(
+      BuildContext context, TerminalCubit terminalCubit) async {
+    final config = await AiConfigRepository.create().load();
+    if (!context.mounted) return;
+    if (!config.isConfigured) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('AI belum dikonfigurasi'),
+          content: const Text(
+              'Atur provider base URL, API key, dan model terlebih dahulu.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Nanti')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Buka Settings')),
+          ],
+        ),
+      );
+      if (go == true && context.mounted) {
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const AiConfigPage()));
+      }
+      return;
+    }
+    if (!context.mounted) return;
     AiInputPanel.show(
       context,
-      onRun: (command) => terminalCubit.sendInput('$command\r'),
+      onRun: (command) => terminalCubit.runCommand(command),
     );
   }
 
