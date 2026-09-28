@@ -154,7 +154,14 @@ class _TerminalViewState extends State<_TerminalView> {
 
   void _onSpecialKey(String sequence) {
     context.read<TerminalCubit>().sendInput(sequence);
-    _focusNode.requestFocus();
+    _showKeyboard();
+  }
+
+  void _showKeyboard() {
+    _focusNode.unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
   }
 
   Future<bool> _confirmExit() async {
@@ -203,6 +210,12 @@ class _TerminalViewState extends State<_TerminalView> {
               }
             },
           ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.keyboard),
+              onPressed: _showKeyboard,
+            ),
+          ],
         ),
         body: BlocConsumer<TerminalCubit, TerminalState>(
           listener: (context, state) {
@@ -348,7 +361,7 @@ class _TerminalViewState extends State<_TerminalView> {
                     active.buffer.scrollOffset = 0;
                     context.read<TerminalCubit>().notifyRepaint();
                   }
-                  _focusNode.requestFocus();
+                  _showKeyboard();
                 },
                 onDoubleTap: () async {
                   final data = await Clipboard.getData(Clipboard.kTextPlain);

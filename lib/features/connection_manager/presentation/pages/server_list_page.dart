@@ -15,6 +15,7 @@ import 'package:sshku/features/server_groups/presentation/cubit/server_groups_cu
 import 'package:sshku/features/server_groups/presentation/cubit/server_groups_state.dart';
 import 'package:sshku/features/server_groups/presentation/widgets/manage_groups_sheet.dart';
 import 'package:sshku/features/settings/presentation/pages/settings_page.dart';
+import 'package:sshku/features/settings/presentation/widgets/export_import_actions.dart';
 import 'package:sshku/features/terminal/presentation/pages/terminal_page.dart';
 
 class ServerListPage extends StatelessWidget {
@@ -147,11 +148,22 @@ class _ServerListViewState extends State<_ServerListView> {
           PopupMenuButton(
             icon: const Icon(Icons.more_vert),
             itemBuilder: (_) => [
+              const PopupMenuItem(value: 'export', child: Text('Export Backup')),
+              const PopupMenuItem(value: 'import', child: Text('Import Backup')),
               const PopupMenuItem(value: 'manage_groups', child: Text('Manage Groups')),
             ],
             onSelected: (v) {
               if (v == 'manage_groups') {
                 ManageGroupsSheet.show(context, context.read<ServerGroupsCubit>());
+              } else if (v == 'export') {
+                exportConfig(context);
+              } else if (v == 'import') {
+                importConfig(context).then((_) {
+                  if (context.mounted) {
+                    context.read<ServerListCubit>().loadServers();
+                    context.read<ServerGroupsCubit>().loadGroups();
+                  }
+                });
               }
             },
           ),
