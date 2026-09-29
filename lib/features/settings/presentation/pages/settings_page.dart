@@ -97,7 +97,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           _sectionHeader('AI Command'),
           ListTile(
-            leading: const Icon(Icons.auto_awesome),
+            leading: const Icon(Icons.terminal),
             title: const Text('AI Command'),
             subtitle: const Text('Provider base URL, API key, dan model'),
             trailing: const Icon(Icons.chevron_right),

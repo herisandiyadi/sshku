@@ -258,7 +258,7 @@ class _TerminalViewState extends State<_TerminalView> {
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.auto_awesome),
+              icon: const Icon(Icons.terminal),
               tooltip: 'AI Command',
               onPressed: () => _openAiPanel(context),
             ),

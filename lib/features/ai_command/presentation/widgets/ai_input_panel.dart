@@ -76,7 +76,7 @@ class _AiInputViewState extends State<_AiInputView> {
         children: [
           Row(
             children: [
-              const Icon(Icons.auto_awesome, color: AppColors.primary, size: 20),
+              const Icon(Icons.terminal, color: AppColors.primary, size: 20),
               const SizedBox(width: 8),
               const Text('AI Command',
                   style: TextStyle(
